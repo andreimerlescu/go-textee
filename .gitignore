@@ -1,0 +1,9 @@
+.idea
+.DS_Store
+._*
+go-textee
+.svn
+.env*
+*.exe
+*.dll
+*.log
