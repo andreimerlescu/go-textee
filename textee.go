@@ -66,7 +66,6 @@ func (tt *Textee) ParseString(input string) *Textee {
 		}(sentence)
 	}
 	wg.Wait()
-	log.Printf("done waiting")
 	return tt
 }
 
