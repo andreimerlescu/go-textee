@@ -1,10 +1,10 @@
 package go_textee
 
 import (
-	`reflect`
-	`testing`
+	"reflect"
+	"testing"
 
-	gematria `github.com/andreimerlescu/go-gematria`
+	gematria "github.com/andreimerlescu/go-gematria"
 )
 
 func TestTextee_ParseString(t *testing.T) {
@@ -30,8 +30,14 @@ func TestTextee_ParseString(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tt := NewTextee()
-			tt.ParseString(tc.args.input)
+			tt, err := NewTextee(tc.args.input)
+			if err != nil {
+				t.Errorf("ParseString() error = %v", err)
+			}
+			tt, err = tt.ParseString(tc.args.input)
+			if err != nil {
+				t.Errorf("ParseString() error = %v", err)
+			}
 
 			for substring, expectedCount := range tc.want {
 				if count, ok := tt.Substrings[substring]; !ok || count.Load() != expectedCount {
@@ -44,7 +50,14 @@ func TestTextee_ParseString(t *testing.T) {
 
 func TestTextee_CalculateGematria(t *testing.T) {
 	t.Run("testing calculate gematria", func(t *testing.T) {
-		got := NewTextee("manifesting three six nine").CalculateGematria()
+		tt, err := NewTextee("manifesting three six nine")
+		if err != nil {
+			t.Errorf("CalculateGematria() error = %v", err)
+		}
+		got, err2 := tt.CalculateGematria()
+		if err2 != nil {
+			t.Errorf("CalculateGematria() error = %v", err2)
+		}
 		want := gematria.Gematria{
 			Jewish:  337,
 			English: 702,

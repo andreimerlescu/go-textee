@@ -1,12 +1,13 @@
 package go_textee
 
 import (
-	`fmt`
-	`log`
-	`sort`
-	`strings`
-	`sync`
-	`sync/atomic`
+	"errors"
+	"fmt"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
 
 	gematria "github.com/andreimerlescu/go-gematria"
 )
@@ -17,12 +18,42 @@ type ITextee interface {
 	CalculateGematria() *Textee
 }
 
-func NewTextee(opts ...string) *Textee {
+var (
+	ErrEmptyInput    ArgumentError = errors.New("empty input")
+	ErrGematriaParse GematriaError = errors.New("unable to parse gematria for value")
+	ErrRegexpMissing RegexpError   = errors.New("regexp compile result missing")
+	ErrBadParsing    ParseError    = errors.New("failed to parse the string")
+)
+
+type ArgumentError error
+type GematriaError error
+type RegexpError error
+type ParseError error
+type CleanError error
+
+func NewTextee(opts ...string) (*Textee, error) {
+	if opts == nil {
+		return nil, ErrEmptyInput
+	}
+
+	// ensure regexp clean string compiles
+	var cleanRegErr RegexpError
+	regCleanSubstring, cleanRegErr = regexp.Compile(`[^a-zA-Z0-9\s]`)
+	if cleanRegErr != nil {
+		return nil, errors.Join(ErrRegexpMissing, cleanRegErr)
+	}
+
+	// ensure regexp find sentences compiles
+	var findRegErr RegexpError
+	regFindSentences, findRegErr = regexp.Compile(`(?m)([^.!?]*[.!?])(?:\s|$)`)
+	if findRegErr != nil {
+		return nil, errors.Join(ErrRegexpMissing, findRegErr)
+	}
+
 	input := strings.Join(opts, " ")
 	gem, err := gematria.NewGematria(input)
 	if err != nil {
-		log.Printf("failed to get NewGematria due to err %v", err)
-		return nil
+		return nil, err
 	}
 	tt := &Textee{
 		Input:         input,
@@ -33,13 +64,25 @@ func NewTextee(opts ...string) *Textee {
 		ScoresJewish:  make(map[uint][]string),
 		ScoresSimple:  make(map[uint][]string),
 	}
-	tt.ParseString(strings.Join(opts, " "))
-	return tt
+	payload := strings.Join(opts, " ")
+	tt, err = tt.ParseString(payload)
+	if err != nil {
+		return nil, errors.Join(ErrBadParsing, err)
+	}
+	return tt, nil
 }
 
-func (tt *Textee) ParseString(input string) *Textee {
-	sentences := string_to_sentence_slice(input)
+func (tt *Textee) ParseString(input string) (*Textee, error) {
+	sentences, err := stringToSentenceSlice(input)
+	if err != nil {
+		return nil, errors.Join(ErrBadParsing, err)
+	}
 
+	tt.mu.Lock()
+	tt.Substrings = make(map[string]*atomic.Int32)
+	tt.mu.Unlock()
+
+	var errs []CleanError
 	var wg sync.WaitGroup
 	for _, sentence := range sentences {
 		wg.Add(1)
@@ -50,15 +93,19 @@ func (tt *Textee) ParseString(input string) *Textee {
 			for i := 0; i < len(words); i++ {
 				for j := i + 1; j <= i+3 && j <= len(words); j++ {
 					substring := strings.Join(words[i:j], " ")
-					cleaned_substring := clean_substring(substring)
-					cleaned_substring = strings.ToLower(cleaned_substring)
+					cleanedSubstring, cleanErr := cleanSubstring(substring)
+					if cleanErr != nil {
+						errs = append(errs, cleanErr)
+						continue
+					}
+					cleanedSubstring = strings.ToLower(cleanedSubstring)
 
-					if cleaned_substring != "" {
+					if cleanedSubstring != "" {
 						tt.mu.Lock()
-						if _, ok := tt.Substrings[cleaned_substring]; !ok {
-							tt.Substrings[cleaned_substring] = new(atomic.Int32)
+						if _, ok := tt.Substrings[cleanedSubstring]; !ok {
+							tt.Substrings[cleanedSubstring] = new(atomic.Int32)
 						}
-						tt.Substrings[cleaned_substring].Add(1)
+						tt.Substrings[cleanedSubstring].Add(1)
 						tt.mu.Unlock()
 					}
 				}
@@ -66,12 +113,18 @@ func (tt *Textee) ParseString(input string) *Textee {
 		}(sentence)
 	}
 	wg.Wait()
-	return tt
+	if len(errs) > 0 {
+		for _, e := range errs {
+			err = errors.Join(err, e)
+		}
+		return nil, err
+	}
+	return tt, nil
 }
 
 func (tt *Textee) String() string {
 	if len(tt.Substrings) == 0 {
-		return fmt.Sprintf("Error: No .ParseString() invocation found for tt (type=%T) (address=%p).", tt, &tt)
+		return ""
 	}
 	hasGematria := len(tt.ScoresEnglish) > 0 || len(tt.ScoresJewish) > 0 || len(tt.ScoresSimple) > 0
 	var output string
@@ -106,34 +159,39 @@ func (tt *Textee) SortedSubstrings() SortedStringQuantities {
 	return sortedQuantities
 }
 
-func (tt *Textee) CalculateGematria() *Textee {
+func (tt *Textee) CalculateGematria() (*Textee, error) {
 	tt.mu.Lock()
 	defer tt.mu.Unlock()
 	substrings := tt.Substrings
-	english_results := make(map[uint][]string)
-	jewish_results := make(map[uint][]string)
-	simple_results := make(map[uint][]string)
+	englishResults := make(map[uint][]string)
+	jewishResults := make(map[uint][]string)
+	simpleResults := make(map[uint][]string)
 	errorCounter := atomic.Int32{}
+	errs := make([]error, 0)
 	for substring, _ := range substrings {
 		gemscore, err := gematria.NewGematria(substring)
 		if err != nil {
 			errorCounter.Add(1)
+			errs = append(errs, errors.Join(ErrGematriaParse, err))
 			continue
 		}
-		english_results[gemscore.English] = append(english_results[gemscore.English], substring)
-		jewish_results[gemscore.Jewish] = append(jewish_results[gemscore.Jewish], substring)
-		simple_results[gemscore.Simple] = append(simple_results[gemscore.Simple], substring)
+		englishResults[gemscore.English] = append(englishResults[gemscore.English], substring)
+		jewishResults[gemscore.Jewish] = append(jewishResults[gemscore.Jewish], substring)
+		simpleResults[gemscore.Simple] = append(simpleResults[gemscore.Simple], substring)
 		if tt.Gematrias == nil {
 			tt.Gematrias = make(map[string]gematria.Gematria)
 		}
 		tt.Gematrias[substring] = gemscore
 	}
+	if errorCounter.Load() > 0 {
+		return nil, errors.Join(errs...)
+	}
 	substrings = nil
-	tt.ScoresEnglish = english_results
-	tt.ScoresJewish = jewish_results
-	tt.ScoresSimple = simple_results
-	english_results = nil
-	jewish_results = nil
-	simple_results = nil
-	return tt
+	tt.ScoresEnglish = englishResults
+	tt.ScoresJewish = jewishResults
+	tt.ScoresSimple = simpleResults
+	englishResults = nil
+	jewishResults = nil
+	simpleResults = nil
+	return tt, nil
 }

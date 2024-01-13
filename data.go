@@ -1,11 +1,11 @@
 package go_textee
 
 import (
-	`regexp`
-	`runtime`
-	`strings`
-	`sync`
-	`sync/atomic`
+	"regexp"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 
 	gematria "github.com/andreimerlescu/go-gematria"
 	sema "github.com/andreimerlescu/go-sema"
@@ -29,25 +29,31 @@ type SubstringQuantity struct {
 
 type SortedStringQuantities []SubstringQuantity
 
-var reg_clean_substring = regexp.MustCompile(`[^a-zA-Z0-9\s]`)
-var reg_find_sentences = regexp.MustCompile(`(?m)([^.!?]*[.!?])(?:\s|$)`)
+var regCleanSubstring *regexp.Regexp
+var regFindSentences *regexp.Regexp
 
 var sem = sema.New(runtime.GOMAXPROCS(0))
 
-// string_to_sentence_slice splits text into sentences, considering abbreviations.
-func string_to_sentence_slice(text string) []string {
-	matches := reg_find_sentences.FindAllString(text, -1)
+// stringToSentenceSlice splits text into sentences, considering abbreviations.
+func stringToSentenceSlice(text string) ([]string, error) {
+	if regFindSentences == nil {
+		return nil, ErrRegexpMissing
+	}
+	matches := regFindSentences.FindAllString(text, -1)
 	for i, match := range matches {
 		matches[i] = strings.TrimSpace(match)
 	}
 
 	if len(matches) == 0 {
-		return []string{text}
+		return []string{text}, nil
 	}
-	return matches
+	return matches, nil
 }
 
-// clean_substring returns the string to A-Za-z0-9\s only
-func clean_substring(word string) string {
-	return reg_clean_substring.ReplaceAllString(word, "")
+// cleanSubstring returns the string to A-Za-z0-9\s only
+func cleanSubstring(word string) (string, error) {
+	if regCleanSubstring == nil {
+		return "", ErrRegexpMissing
+	}
+	return regCleanSubstring.ReplaceAllString(word, ""), nil
 }
