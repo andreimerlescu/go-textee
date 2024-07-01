@@ -111,7 +111,9 @@ licensed under Apache 2.0.
 package main
 
 import (
-	`fmt`
+	"fmt"
+	"os"
+    "errors"
 
 	textee "github.com/andreimerlescu/go-textee"
 )
@@ -120,17 +122,32 @@ const inputString = `All right let's move from this point on 16 March 84, let's 
 
 func main() {
 	// just calculate the substrings (no Gematria)
-	tt1 := textee.NewTextee().ParseString(inputString)
+	tt1, err := textee.NewTextee(inputString)
+	if err != nil {
+		_,_ = fmt.Fprintf(os.Stderr, "%v", errors.Join(textee.ErrBadParsing, err))
+	}
 
 	// calculate a new substring with Gematria 
-	tt1 = tt1.CalculateGematria()
+	var err2 error
+	tt1, err2 = tt1.CalculateGematria()
+    if err2 != nil {
+		_,_ = fmt.Fprintf(os.Stderr, "%v", errors.Join(textee.ErrBadParsing, err2))
+    }
 	for substring, quantity := range tt1.Substrings {
 		fmt.Printf("substring '%v' has %d occurrences\n", substring, quantity.Load())
-    }
-	
+	}
+
 	// combine them together
-	tt2 := textee.NewTextee().ParseString(inputString).CalculateGematria()
-	fmt.Printf(tt2)
+	tt2, err3 := textee.NewTextee(inputString)
+    if err3 != nil {
+		_,_ = fmt.Fprintf(os.Stderr, "%v", errors.Join(textee.ErrBadParsing, err3))
+    }
+    var err4 error
+    tt2, err4 = tt2.CalculateGematria()
+    if err4 != nil {
+		_,_ = fmt.Fprintf(os.Stderr, "%v", errors.Join(textee.ErrBadParsing, err4))
+	}
+	fmt.Println(tt2)
 
 	// sort the substrings by the quantity of occurrences in the original string, most common are first
 	sortedSubstrings := tt2.SortedSubstrings()
