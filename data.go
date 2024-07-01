@@ -1,6 +1,7 @@
 package go_textee
 
 import (
+	"errors"
 	"regexp"
 	"runtime"
 	"strings"
@@ -10,6 +11,25 @@ import (
 	gematria "github.com/andreimerlescu/go-gematria"
 	sema "github.com/andreimerlescu/go-sema"
 )
+
+type ITextee interface {
+	ParseString(input string) *Textee
+	SortedSubstrings() SortedStringQuantities
+	CalculateGematria() *Textee
+}
+
+var (
+	ErrEmptyInput    ArgumentError = errors.New("empty input")
+	ErrGematriaParse GematriaError = errors.New("unable to parse gematria for value")
+	ErrRegexpMissing RegexpError   = errors.New("regexp compile result missing")
+	ErrBadParsing    ParseError    = errors.New("failed to parse the string")
+)
+
+type ArgumentError error
+type GematriaError error
+type RegexpError error
+type ParseError error
+type CleanError error
 
 type Textee struct {
 	mu            sync.RWMutex

@@ -12,25 +12,6 @@ import (
 	gematria "github.com/andreimerlescu/go-gematria"
 )
 
-type ITextee interface {
-	ParseString(input string) *Textee
-	SortedSubstrings() SortedStringQuantities
-	CalculateGematria() *Textee
-}
-
-var (
-	ErrEmptyInput    ArgumentError = errors.New("empty input")
-	ErrGematriaParse GematriaError = errors.New("unable to parse gematria for value")
-	ErrRegexpMissing RegexpError   = errors.New("regexp compile result missing")
-	ErrBadParsing    ParseError    = errors.New("failed to parse the string")
-)
-
-type ArgumentError error
-type GematriaError error
-type RegexpError error
-type ParseError error
-type CleanError error
-
 func NewTextee(opts ...string) (*Textee, error) {
 	if opts == nil {
 		return nil, ErrEmptyInput
